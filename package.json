@@ -1,0 +1,27 @@
+{
+  "name": "mobx-snackabra-store",
+  "version": "1.0.0",
+  "description": "A Mobx implementation of a state store for use in React PWA's",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/384co/mobx-snackabra-store.git"
+  },
+  "keywords": [
+    "snackabra"
+  ],
+  "author": "384 Inc",
+  "license": "GPL-3.0-only",
+  "bugs": {
+    "url": "https://github.com/384co/mobx-snackabra-store/issues"
+  },
+  "homepage": "https://github.com/384co/mobx-snackabra-store#readme",
+  "dependencies": {
+    "mobx": "^6.7.0",
+    "react": "^18.2.0",
+    "snackabra": "^0.4.28"
+  }
+}
