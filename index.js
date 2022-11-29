@@ -1,5 +1,5 @@
-import SnackabraContext, {SnackabraProvider} from "./src/provider/SnackabraContext";
-import SnackabraStore from "./src/stores/Snackabra.Store";
+import SnackabraContext, {SnackabraProvider} from "./lib/provider/SnackabraContext";
+import SnackabraStore from "./lib/stores/Snackabra.Store";
 
 export {
     SnackabraContext,
