@@ -6,7 +6,7 @@
   "module": "./index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "rm -rf ./lib && ./node_modules/.bin/babel src --out-dir lib"
+    "build": "./node_modules/.bin/babel src --out-dir lib"
   },
   "repository": {
     "type": "git",
@@ -29,7 +29,7 @@
   "dependencies": {
     "mobx": "^6.7.0",
     "react": "^17.0.0 || ^18.0.0",
-    "snackabra": "^0.4.36"
+    "snackabra": "../snackabra-jslib"
   },
   "devDependencies": {
     "@babel/cli": "^7.19.3",

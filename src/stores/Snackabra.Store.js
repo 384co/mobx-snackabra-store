@@ -1,5 +1,7 @@
 import { makeObservable, observable, action, computed, onBecomeUnobserved, configure, toJS } from "mobx";
+import IndexedKV from "../IndexedKV";
 const SB = require('snackabra');
+let cacheDb;
 configure({
   useProxies: "never"
 });
@@ -76,18 +78,31 @@ class SnackabraStore {
     this.save();
     console.log(`Suspending`, this);
   };
-  init = async () => {
-    const sb_data = JSON.parse(await document.cacheDb.getItem('sb_data'));
-    for (let x in sb_data) {
-      console.log(x)
-      if(x !== 'SB' && x !== "sbConfig"){
-        this[x] = sb_data[x];
-
+  init = () => {
+    return new Promise((resolve) => {
+      try{
+        const start = async () => {
+          const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
+          for (let x in sb_data) {
+            if (x !== 'SB' && x !== "sbConfig") {
+              this[x] = sb_data[x];
+  
+            }
+          }
+          resolve('success')
+        }
+  
+        cacheDb = new IndexedKV(window, { db: 'sb_data', table: 'cache', onReady: start })
+      }catch(e){
+        console.error(e)
+        reject('failed to initialize Snackabra.Store')
       }
-    }
+
+    })
+
   };
   save = () => {
-    document.cacheDb.setItem('sb_data', JSON.stringify(this));
+    cacheDb.setItem('sb_data', JSON.stringify(this));
   };
 
   get config() {
