@@ -1,12 +1,15 @@
 {
   "name": "mobx-snackabra-store",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "A Mobx implementation of a state store for use in React PWA's",
   "main": "./index.js",
   "module": "./index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "./node_modules/.bin/babel src --out-dir lib"
+    "build": "./node_modules/.bin/babel src --out-dir lib",
+    "start": "npm run build && npm run watch",
+    "nodemon": "nodemon --watch ./src -L -e js --ignore node_modules/ --exec \"npm run build\"",
+    "watch": "concurrently -k -p \"[{name}]\" -n \"Watcher\" -c \"green.bold,cyan.bold,magenta.bold,white.bold\"  \"npm run nodemon\""
   },
   "repository": {
     "type": "git",
@@ -35,6 +38,8 @@
     "@babel/cli": "^7.19.3",
     "@babel/core": "^7.20.5",
     "@babel/preset-env": "^7.20.2",
-    "@babel/preset-react": "^7.18.6"
+    "@babel/preset-react": "^7.18.6",
+    "concurrently": "^6.0.0",
+    "nodemon": "^2.0.14"
   }
 }
