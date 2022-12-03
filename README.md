@@ -8,19 +8,75 @@ snackabra-jslib should be checked out in the same directory as mobx-snackabra-st
 
 ## Installation
 
-```git clone https://github.com/384co/mobx-snackabra-store.git```
+```sh
+git clone https://github.com/384co/mobx-snackabra-store.git
+```
 
-```cd mobx-snackabra-store```
+```sh
+cd mobx-snackabra-store
+```
 
-```yarn install```
+```sh
+yarn install
+```
 
 
 ## Running the project
 
 Running the project is for development purposes. It will watch the ./src directory and build the project out to ./lib as changes occure in the ./src directory.
 
-```yarn start```
+```sh
+yarn start
+```
 
 ## Building the project
 
-```yarn build```
+```sh
+yarn build
+```
+
+## Consuming in a React UI
+App.js example
+```jsx
+import React from "react"
+import Home from "./Home";
+import theme from "./theme";
+import { SnackabraProvider } from "mobx-snackabra-store";
+
+const sbConfig = {
+  channel_server: process.env.REACT_APP_ROOM_SERVER,
+  channel_ws: process.env.REACT_APP_ROOM_SERVER_WS,
+  storage_server: process.env.REACT_APP_STORAGE_SERVER
+}
+
+const App = () => {
+  return (
+        <SnackabraProvider config={sbConfig}>
+            <Home />
+        </SnackabraProvider>
+  )
+}
+
+export default App
+```
+
+Home.js example
+```jsx
+/* Copyright (c) 2021 Magnusson Institute, All Rights Reserved */
+
+import * as React from "react"
+import { observer } from "mobx-react"
+import { SnackabraContext } from "mobx-snackabra-store";
+
+const Home = observer((props) => {
+  const sbContext = React.useContext(SnackabraContext);
+  return (
+    <div>
+        {/* can now use sbContext here to interface to snackabra-jslib*/}
+    </div>
+  )
+})
+
+export default Home;
+
+```
