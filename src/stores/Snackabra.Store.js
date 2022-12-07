@@ -258,7 +258,6 @@ class SnackabraStore {
     m.createdAt = new Date(parseInt(m.timestampPrefix, 2));
     // For whispers
     if (m.whispered === true) {
-      console.log(m)
       m.text = "(whispered)"
       try{
         if (m.whisper && this.socket.owner && !m.reply_to) {
@@ -268,19 +267,16 @@ class SnackabraStore {
         }
         if (m.whisper && this.Crypto.compareKeys(m.sender_pubKey, this.socket.exportable_pubKey) && !m.reply_to) {
           const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
-          console.log(shared_key)
           m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
           m.text = m.contents
         }
         if(m.reply_to && this.socket.owner ){
           const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.reply_to, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
-          console.log(shared_key)
           m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
           m.text = m.contents
         }
         if(m.reply_to && this.Crypto.compareKeys(m.reply_to, this.socket.exportable_pubKey) ){
           const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
-          console.log(shared_key)
           m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
           m.text = m.contents
         }
@@ -325,7 +321,6 @@ class SnackabraStore {
           let m = r_messages[x]
           // For whispers
           if (m.whispered === true) {
-            console.log(m)
             m.text = "(whispered)"
             try{
               if (m.whisper && this.socket.owner && !m.reply_to) {
@@ -335,19 +330,16 @@ class SnackabraStore {
               }
               if (m.whisper && this.Crypto.compareKeys(m.sender_pubKey, this.socket.exportable_pubKey) && !m.reply_to) {
                 const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
-                console.log(shared_key)
                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                 m.text = m.contents
               }
               if(m.reply_to && this.socket.owner ){
                 const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.reply_to, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
-                console.log(shared_key)
                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                 m.text = m.contents
               }
               if(m.reply_to && this.Crypto.compareKeys(m.reply_to, this.socket.exportable_pubKey) ){
                 const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
-                console.log(shared_key)
                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                 m.text = m.contents
               }
@@ -361,7 +353,6 @@ class SnackabraStore {
         }
         this.rooms[this.activeRoom].messages = this.#mergeMessages(toJS(this.rooms[this.activeRoom].messages), r_messages);
         this.save();
-        console.log(r_messages)
         resolve(r_messages);
       });
     });
