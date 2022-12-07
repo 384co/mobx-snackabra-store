@@ -25,6 +25,9 @@ class SnackabraStore {
   userKey = {};
   //might be more of a local state thing
   loadingMore = false;
+  lockEncryptionKey = false;
+  lastMessageTimeStamp = 0;
+  lastSeenMessageId;
   moreMessages = false;
   replyTo;
   replyEncryptionKey = {};
@@ -51,6 +54,11 @@ class SnackabraStore {
       activeroom: computed,
       messages: computed,
       contacts: computed,
+      lockKey: computed,
+      lastMessageTime: computed,
+      lastSeenMessage: computed,
+      lastSeenMessageId: observable,
+      lockEncryptionKey: observable,
       loadingMore: observable,
       sbConfig: observable,
       roomMetadata: observable,
@@ -82,47 +90,66 @@ class SnackabraStore {
     console.log(`Suspending`, this);
   };
   init = () => {
-    return new Promise((resolve) => {
-      try{
+    return new Promise(resolve => {
+      try {
         const start = async () => {
           const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
           for (let x in sb_data) {
             if (x !== 'SB' && x !== "sbConfig") {
               this[x] = sb_data[x];
-  
             }
           }
-          resolve('success')
-        }
-  
-        cacheDb = new IndexedKV(window, { db: 'sb_data', table: 'cache', onReady: start })
-      }catch(e){
-        console.error(e)
-        reject('failed to initialize Snackabra.Store')
+          console.log(toJS(this))
+          resolve('success');
+        };
+        cacheDb = new IndexedKV(window, {
+          db: 'sb_data',
+          table: 'cache',
+          onReady: start
+        });
+      } catch (e) {
+        console.error(e);
+        reject('failed to initialize Snackabra.Store');
       }
-
-    })
-
+    });
   };
   save = () => {
     cacheDb.setItem('sb_data', JSON.stringify(this));
   };
-
   get config() {
-    return toJS(this.sbConfig)
+    return toJS(this.sbConfig);
+  }
+
+  set lastSeenMessage(messageId) {
+    this.rooms[this.activeRoom].lastSeenMessageId = messageId;
+  }
+  get lastSeenMessage() {
+    return toJS(this.rooms[this.activeRoom].lastSeenMessageId);
+  }
+
+  set lastMessageTime(timestamp) {
+    this.rooms[this.activeRoom].lastMessageTime = timestamp;
+  }
+  get lastMessageTime() {
+    return toJS(this.rooms[this.activeRoom].lastMessageTime);
+  }
+
+  set lockKey(lockKey) {
+    this.rooms[this.activeRoom].lockEncryptionKey = lockKey;
+  }
+  get lockKey() {
+    return toJS(this.rooms[this.activeRoom].lockEncryptionKey);
   }
 
   set config(config) {
     this.sbConfig = config;
   }
-
   set storage(storage) {
     this.storage = storage;
   }
   get storage() {
     return this.storage ? toJS(this.storage) : undefined;
   }
-
   get socket() {
     return this.channel ? toJS(this.channel) : undefined;
   }
@@ -130,7 +157,7 @@ class SnackabraStore {
     this.channel = channel;
   }
   get retrieveImage() {
-    return this.storage
+    return this.storage;
   }
   get owner() {
     return this.socket ? this.socket.owner : false;
@@ -193,6 +220,8 @@ class SnackabraStore {
   set messages(messages) {
     if (this.rooms[this.activeRoom]) {
       this.rooms[this.activeRoom].messages = messages;
+      this.rooms[this.activeRoom].lastMessageTimeStamp = messages[messages.length -1] !== undefined ? messages[messages.length -1].timestampPrefix : 0
+      this.rooms[this.activeRoom].lastSeenMessage =  messages[messages.length -1] !== undefined ? messages[messages.length -1]._id : ""
       this.save();
     }
   }
@@ -202,9 +231,17 @@ class SnackabraStore {
   receiveMessage = (m, messageCallback) => {
     const user_pubKey = m.user._id;
     m.user._id = JSON.stringify(m.user._id);
-    m.user.name = this.contacts[user_pubKey.x + ' ' + user_pubKey.y] !== undefined ? this.contacts[user_pubKey.x + ' ' + user_pubKey.y] : m.user.name;
+    if(this.contacts[user_pubKey.x + ' ' + user_pubKey.y] === undefined){
+      const contacts = this.contacts;
+      contacts[user_pubKey.x + ' ' + user_pubKey.y] = m.user.name
+      this.contacts = contacts
+    }
+    m.user.name = this.contacts[user_pubKey.x + ' ' + user_pubKey.y]
     m.sender_username = m.user.name;
     m.createdAt = new Date(parseInt(m.timestampPrefix, 2));
+    console.log(m)
+    this.rooms[this.activeRoom].lastMessageTime = m.timestampPrefix;
+    this.rooms[this.activeRoom].lastSeenMessage = m._id
     this.rooms[this.activeRoom].messages = [...toJS(this.rooms[this.activeRoom].messages), m];
     this.save();
     messageCallback(m);
@@ -218,7 +255,15 @@ class SnackabraStore {
           ...received.find(itmInner => itmInner._id === existing[i]?._id)
         });
       } else {
-        merged.push(received[i]);
+        if(received[i]){
+          const user_pubKey = received[i].user._id;
+          if(this.contacts[user_pubKey.x + ' ' + user_pubKey.y] === undefined){
+            const contacts = this.contacts;
+            contacts[user_pubKey.x + ' ' + user_pubKey.y] = received[i].user.name
+            this.contacts = contacts
+          }
+          merged.push(received[i]);
+        }
       }
     }
     return merged.sort((a, b) => a._id > b._id ? 1 : -1);
@@ -391,7 +436,17 @@ class SnackabraStore {
   getRooms = () => {
     return this.rooms;
   };
-  sendMessage = () => { };
+
+
+  downloadRoomData = () => {
+    return new Promise((resolve) => {
+      this.socket.api.downloadData().then((data) => {
+        console.log(data)
+        data.storage.target = window.location.host
+        resolve(data)
+      })
+    })
+  };
 }
-;
+
 export default SnackabraStore;
