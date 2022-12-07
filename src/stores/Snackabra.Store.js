@@ -1,4 +1,5 @@
 import { makeObservable, observable, action, computed, onBecomeUnobserved, configure, toJS } from "mobx";
+import { textChangeRangeIsUnchanged } from "typescript";
 import IndexedKV from "../IndexedKV";
 const SB = require('snackabra');
 let cacheDb;
@@ -23,6 +24,7 @@ class SnackabraStore {
   roomCapacity = 20;
   keys = {};
   userKey = {};
+  sharedKeyProp = false;
   //might be more of a local state thing
   loadingMore = false;
   lockEncryptionKey = false;
@@ -30,13 +32,14 @@ class SnackabraStore {
   lastSeenMessageId;
   moreMessages = false;
   replyTo;
-  replyEncryptionKey = {};
   activeRoom;
   joinRequests = {};
   SB = {};
+  Crypto = {};
   constructor(sbConfig) {
     this.config = sbConfig ? sbConfig : toJS(this.sbConfig);
     this.SB = new SB.Snackabra(this.config);
+    this.Crypto = new SB.SBCrypto();
     this.storage = this.SB.storage;
     if (!sbConfig) {
       console.log('Using default servers in Snackabra.store', this.sbConfig);
@@ -45,6 +48,7 @@ class SnackabraStore {
       createRoom: action,
       setRoom: action,
       importRoom: action,
+      replyEncryptionKey: action,
       user: computed,
       username: computed,
       socket: computed,
@@ -57,6 +61,7 @@ class SnackabraStore {
       lockKey: computed,
       lastMessageTime: computed,
       lastSeenMessage: computed,
+      sharedKey: computed,
       lastSeenMessageId: observable,
       lockEncryptionKey: observable,
       loadingMore: observable,
@@ -69,7 +74,6 @@ class SnackabraStore {
       ownerRotation: observable,
       roomCapacity: observable,
       replyTo: observable,
-      replyEncryptionKey: observable,
       activeRoom: observable,
       keys: observable,
       userKey: observable,
@@ -95,11 +99,10 @@ class SnackabraStore {
         const start = async () => {
           const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
           for (let x in sb_data) {
-            if (x !== 'SB' && x !== "sbConfig") {
+            if (x !== 'SB' && x !== "sbConfig" && x !== "Crypto") {
               this[x] = sb_data[x];
             }
           }
-          console.log(toJS(this))
           resolve('success');
         };
         cacheDb = new IndexedKV(window, {
@@ -220,18 +223,32 @@ class SnackabraStore {
   set messages(messages) {
     if (this.rooms[this.activeRoom]) {
       this.rooms[this.activeRoom].messages = messages;
-      this.rooms[this.activeRoom].lastMessageTimeStamp = messages[messages.length -1] !== undefined ? messages[messages.length -1].timestampPrefix : 0
-      this.rooms[this.activeRoom].lastSeenMessage =  messages[messages.length -1] !== undefined ? messages[messages.length -1]._id : ""
+      this.rooms[this.activeRoom].lastMessageTimeStamp = messages[messages.length - 1] !== undefined ? messages[messages.length - 1].timestampPrefix : 0
+      this.rooms[this.activeRoom].lastSeenMessage = messages[messages.length - 1] !== undefined ? messages[messages.length - 1]._id : ""
       this.save();
     }
   }
+
+  set sharedKey(key) {
+    this.rooms[this.activeroom].sharedKey = key;
+  }
+
+  get sharedKey() {
+    return toJS(this.rooms[this.activeroom].sharedKey);
+  }
+
+  async replyEncryptionKey(recipientPubkey) {
+    return this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", JSON.parse(recipientPubkey), "ECDH", true, []), "AES", false, ["encrypt", "decrypt"])
+  }
+
+
   SBMessage = message => {
     return new SB.SBMessage(this.socket, message);
   };
-  receiveMessage = (m, messageCallback) => {
+  receiveMessage = async (m, messageCallback) => {
     const user_pubKey = m.user._id;
     m.user._id = JSON.stringify(m.user._id);
-    if(this.contacts[user_pubKey.x + ' ' + user_pubKey.y] === undefined){
+    if (this.contacts[user_pubKey.x + ' ' + user_pubKey.y] === undefined) {
       const contacts = this.contacts;
       contacts[user_pubKey.x + ' ' + user_pubKey.y] = m.user.name
       this.contacts = contacts
@@ -239,7 +256,40 @@ class SnackabraStore {
     m.user.name = this.contacts[user_pubKey.x + ' ' + user_pubKey.y]
     m.sender_username = m.user.name;
     m.createdAt = new Date(parseInt(m.timestampPrefix, 2));
-    console.log(m)
+    // For whispers
+    if (m.whispered === true) {
+      console.log(m)
+      m.text = "(whispered)"
+      try{
+        if (m.whisper && this.socket.owner && !m.reply_to) {
+          const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.sender_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+          m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+          m.text = m.contents
+        }
+        if (m.whisper && this.Crypto.compareKeys(m.sender_pubKey, this.socket.exportable_pubKey) && !m.reply_to) {
+          const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+          console.log(shared_key)
+          m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+          m.text = m.contents
+        }
+        if(m.reply_to && this.socket.owner ){
+          const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.reply_to, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+          console.log(shared_key)
+          m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+          m.text = m.contents
+        }
+        if(m.reply_to && this.Crypto.compareKeys(m.reply_to, this.socket.exportable_pubKey) ){
+          const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+          console.log(shared_key)
+          m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+          m.text = m.contents
+        }
+        
+      }catch(e){
+        console.warn(e)
+      }
+    
+    }
     this.rooms[this.activeRoom].lastMessageTime = m.timestampPrefix;
     this.rooms[this.activeRoom].lastSeenMessage = m._id
     this.rooms[this.activeRoom].messages = [...toJS(this.rooms[this.activeRoom].messages), m];
@@ -255,9 +305,9 @@ class SnackabraStore {
           ...received.find(itmInner => itmInner._id === existing[i]?._id)
         });
       } else {
-        if(received[i]){
+        if (received[i]) {
           const user_pubKey = received[i].user._id;
-          if(this.contacts[user_pubKey.x + ' ' + user_pubKey.y] === undefined){
+          if (this.contacts[user_pubKey.x + ' ' + user_pubKey.y] === undefined) {
             const contacts = this.contacts;
             contacts[user_pubKey.x + ' ' + user_pubKey.y] = received[i].user.name
             this.contacts = contacts
@@ -270,9 +320,48 @@ class SnackabraStore {
   };
   getOldMessages = length => {
     return new Promise(resolve => {
-      this.socket.api.getOldMessages(length).then(r_messages => {
+      this.socket.api.getOldMessages(length).then(async (r_messages) => {
+        for (let x in r_messages) {
+          let m = r_messages[x]
+          // For whispers
+          if (m.whispered === true) {
+            console.log(m)
+            m.text = "(whispered)"
+            try{
+              if (m.whisper && this.socket.owner && !m.reply_to) {
+                const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.sender_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+                m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+                m.text = m.contents
+              }
+              if (m.whisper && this.Crypto.compareKeys(m.sender_pubKey, this.socket.exportable_pubKey) && !m.reply_to) {
+                const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+                console.log(shared_key)
+                m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+                m.text = m.contents
+              }
+              if(m.reply_to && this.socket.owner ){
+                const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.reply_to, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+                console.log(shared_key)
+                m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+                m.text = m.contents
+              }
+              if(m.reply_to && this.Crypto.compareKeys(m.reply_to, this.socket.exportable_pubKey) ){
+                const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+                console.log(shared_key)
+                m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
+                m.text = m.contents
+              }
+              
+            }catch(e){
+              console.warn(e)
+            }
+          
+          }
+          r_messages[x] = m
+        }
         this.rooms[this.activeRoom].messages = this.#mergeMessages(toJS(this.rooms[this.activeRoom].messages), r_messages);
         this.save();
+        console.log(r_messages)
         resolve(r_messages);
       });
     });
@@ -300,6 +389,7 @@ class SnackabraStore {
               id: handle.channelId,
               key: handle.key,
               userName: 'Me',
+              sharedKey: false,
               lastSeenMessage: 0,
               contacts: {},
               messages: []
@@ -322,7 +412,7 @@ class SnackabraStore {
     try {
       this.SB.connect(console.log, key, channelId).then(c => c.ready).then(c => {
         if (c) {
-          console.log(c);
+
           this.socket = c;
           this.activeroom = channelId;
           const roomData = this.rooms[channelId] ? this.rooms[channelId] : {
@@ -332,6 +422,7 @@ class SnackabraStore {
             userName: 'Me',
             contacts: {},
             lastSeenMessage: 0,
+            // sharedKey: 
             messages: []
           };
           this.setRoom(channelId, roomData);
@@ -406,8 +497,9 @@ class SnackabraStore {
           key ? key : null,
           // if we omit then we're connecting anonymously (and not as owner)
           channelId // since we're owner this is optional
-        ).then(c => c.ready).then(c => {
+        ).then(c => c.ready).then(async (c) => {
           if (c) {
+            console.log(c)
             this.socket = c;
             this.activeroom = channelId;
             const roomData = this.rooms[channelId] ? this.rooms[channelId] : {
@@ -416,12 +508,14 @@ class SnackabraStore {
               key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
               userName: username !== '' && typeof username !== 'undefined' ? username : '',
               lastSeenMessage: 0,
+              sharedKey: this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"]),
               contacts: {},
               messages: []
             };
             this.setRoom(channelId, roomData);
             this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
             this.socket.userName = roomData.userName;
+            this.sharedKey = this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"])
             this.save();
           }
           resolve('connected');
