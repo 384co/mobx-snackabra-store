@@ -33,6 +33,7 @@ class SnackabraStore {
   moreMessages = false;
   replyTo;
   activeRoom;
+  channelList = {};
   joinRequests = {};
   SB = {};
   Crypto = {};
@@ -50,6 +51,7 @@ class SnackabraStore {
       importRoom: action,
       replyEncryptionKey: action,
       user: computed,
+      channels: computed,
       username: computed,
       socket: computed,
       admin: computed,
@@ -96,14 +98,50 @@ class SnackabraStore {
   init = () => {
     return new Promise(resolve => {
       try {
+        // const start = async () => {
+        //   const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
+        //   for (let x in sb_data) {
+        //     if (x !== 'SB' && x !== "sbConfig" && x !== "Crypto") {
+        //       this[x] = sb_data[x];
+        //     }
+        //   }
+        //   resolve('success');
+        // };
+
         const start = async () => {
           const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
-          for (let x in sb_data) {
-            if (x !== 'SB' && x !== "sbConfig" && x !== "Crypto") {
-              this[x] = sb_data[x];
+          const migrated = await cacheDb.getItem('sb_data_migrated');
+          const channels = await cacheDb.getItem('sb_data_channels');
+          console.log(migrated)
+          if (migrated?.version === 2) {
+            if(channels){
+              this.channels = channels
             }
+            resolve('success');
           }
-          resolve('success');
+          let channelList = []
+          if (sb_data) {
+            Object.keys(sb_data.rooms).forEach((roomId) => {
+              for (let x in sb_data.rooms[roomId]) {
+                if (!this.rooms[roomId]) {
+                  this.rooms[roomId] = {}
+                }
+                channelList.push({ _id: roomId, name: sb_data.rooms[roomId].name })
+                this.rooms[roomId][x] = sb_data.rooms[roomId][x];
+              }
+              cacheDb.setItem('sb_data_' + roomId, toJS(this.rooms[roomId])).then(() => {
+                console.log(channelList)
+                delete this.rooms[roomId];
+              })
+            })
+          }
+          cacheDb.setItem('sb_data_migrated', {
+            timestamp: Date.now(),
+            version: 2
+          }).then(() => {
+            resolve('success');
+          })
+
         };
         cacheDb = new IndexedKV(window, {
           db: 'sb_data',
@@ -116,9 +154,30 @@ class SnackabraStore {
       }
     });
   };
+
+  open = (callback) => {
+    cacheDb = new IndexedKV(window, {
+      db: 'sb_data',
+      table: 'cache',
+      onReady: callback
+    });
+  }
+
   save = () => {
-    cacheDb.setItem('sb_data', JSON.stringify(this));
+    cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
+      this.channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
+      cacheDb.setItem('sb_data_channels', this.channels)
+    })
   };
+
+  get channels() {
+    return toJS(this.channelList)
+  }
+
+  set channels(channelList) {
+    this.channelList = channelList
+  }
+
   get config() {
     return toJS(this.sbConfig);
   }
@@ -178,7 +237,7 @@ class SnackabraStore {
     return this.userName;
   }
   get roomName() {
-    return this.rooms[this.activeRoom]?.name ? this.rooms[this.activeRoom].name : 'Room ' + Math.floor(Object.keys(this.rooms).length + 1);
+    return this.rooms[this.activeRoom]?.name ? this.rooms[this.activeRoom].name : 'Room ' + Math.floor(Object.keys(this.channels).length + 1);
   }
   set roomName(name) {
     this.rooms[this.activeRoom].name = name;
@@ -376,7 +435,7 @@ class SnackabraStore {
             this.activeroom = handle.channelId;
             this.socket.userName = 'Me';
             this.rooms[handle.channelId] = {
-              name: 'Room ' + Math.floor(Object.keys(this.rooms).length + 1),
+              name: 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
               id: handle.channelId,
               key: handle.key,
               userName: 'Me',
@@ -408,7 +467,7 @@ class SnackabraStore {
       }
       connectPromises.push(this.connect(options))
     })
-    Promise.all(connectPromises).then((r)=>{
+    Promise.all(connectPromises).then((r) => {
       console.log(r)
       Object.keys(roomData.roomData).forEach((room) => {
         this.rooms[this.activeRoom].contacts = roomData.contacts;
@@ -418,7 +477,6 @@ class SnackabraStore {
   };
 
   importRoom = async roomData => {
-    console.log(roomData);
     const channelId = roomData.roomId;
     const key = JSON.parse(roomData.ownerKey);
     try {
@@ -486,6 +544,7 @@ class SnackabraStore {
   };
   setRoom = (channelId, roomData) => {
     this.rooms[channelId] = roomData;
+    this.activeroom = channelId;
   };
   connect = async ({
     roomId,
@@ -515,7 +574,7 @@ class SnackabraStore {
             this.socket = c;
             this.activeroom = channelId;
             const roomData = this.rooms[channelId] ? this.rooms[channelId] : {
-              name: 'Room ' + Math.floor(Object.keys(this.rooms).length + 1),
+              name: 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
               id: channelId,
               key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
               userName: username !== '' && typeof username !== 'undefined' ? username : '',
@@ -539,10 +598,17 @@ class SnackabraStore {
       }
     });
   };
-  getRooms = () => {
-    return this.rooms;
-  };
+  // getRooms = () => {
+  //   return this.rooms;
+  // };
 
+  getChannel = (channel)=>{
+    return new Promise((resolve)=>{
+      cacheDb.getItem('sb_data_' + channel).then((data) => {
+        resolve(data)
+      })
+    })
+  }
 
   downloadRoomData = () => {
     return new Promise((resolve) => {

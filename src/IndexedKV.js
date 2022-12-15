@@ -70,9 +70,9 @@ class IndexedKV {
           resolve(returnArray);
         }
       };
-      request.onerror = function (event) {
-        reject(event)
-      };
+      // request.onerror = function (event) {
+      //   reject(event)
+      // };
     })
   }
 
