@@ -50,6 +50,7 @@ class SnackabraStore {
       setRoom: action,
       importRoom: action,
       replyEncryptionKey: action,
+      updateChannelName: action,
       user: computed,
       channels: computed,
       username: computed,
@@ -239,8 +240,27 @@ class SnackabraStore {
   }
   set roomName(name) {
     this.rooms[this.activeRoom].name = name;
+    this.channels[this.activeRoom].name = name
     this.save();
   }
+
+  updateChannelName = ({name, channelId}) =>{
+    return new Promise((resolve, reject)=>{
+      try{
+        this.getChannel(channelId).then((data)=>{
+          this.rooms[channelId] = data
+          this.rooms[channelId].name = name 
+          this.channels[channelId].name = name
+          this.save();
+          resolve('success')
+        })
+      }catch(e){
+        reject(e)
+      }
+
+    })
+}
+  
   get user() {
     return this.socket ? {
       _id: JSON.stringify(this.socket.exportable_pubKey),
@@ -527,7 +547,7 @@ class SnackabraStore {
     return this.socket.api.lockRoom();
   };
   getExistingRoom = channelId => {
-    return toJS(this.rooms[channelId]);
+    throw new Error('getExistingRoom is deprecated')
   };
   setMessages = (channelId, messages) => {
     return this.rooms[channelId].messages = messages;
@@ -575,10 +595,11 @@ class SnackabraStore {
           channelId // since we're owner this is optional
         ).then(c => c.ready).then(async (c) => {
           if (c) {
-            console.log(c)
+            console.info(c)
             this.socket = c;
             this.activeroom = channelId;
-            const roomData = this.rooms[channelId] ? this.rooms[channelId] : {
+            const channel = await this.getChannel(channelId);
+            const roomData = channel ? channel : {
               name: 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
               id: channelId,
               key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
@@ -588,7 +609,7 @@ class SnackabraStore {
               contacts: {},
               messages: []
             };
-            this.setRoom(channelId, roomData).then(async ()=>{
+            this.setRoom(channelId, roomData).then(async () => {
               this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
               this.socket.userName = roomData.userName;
               this.sharedKey = this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"])
