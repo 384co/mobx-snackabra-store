@@ -112,7 +112,6 @@ class SnackabraStore {
           const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
           const migrated = await cacheDb.getItem('sb_data_migrated');
           const channels = await cacheDb.getItem('sb_data_channels');
-          console.log(migrated)
           if (migrated?.version === 2) {
             if (channels) {
               this.channels = channels
@@ -164,7 +163,6 @@ class SnackabraStore {
 
   save = () => {
     cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
-      console.log(this.rooms)
       this.channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
       cacheDb.setItem('sb_data_channels', this.channels)
     })
@@ -458,7 +456,6 @@ class SnackabraStore {
   };
 
   importKeys = async roomData => {
-    console.log(roomData);
     let connectPromises = [];
     Object.keys(roomData.roomData).forEach((room) => {
       const options = {
@@ -469,7 +466,6 @@ class SnackabraStore {
       connectPromises.push(this.connect(options))
     })
     Promise.all(connectPromises).then((r) => {
-      console.log(r)
       Object.keys(roomData.roomData).forEach((room) => {
         this.rooms[this.activeRoom].contacts = roomData.contacts;
       })
@@ -593,7 +589,6 @@ class SnackabraStore {
               messages: []
             };
             this.setRoom(channelId, roomData).then(async ()=>{
-              console.log(this.rooms)
               this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
               this.socket.userName = roomData.userName;
               this.sharedKey = this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"])
@@ -624,7 +619,6 @@ class SnackabraStore {
   downloadRoomData = () => {
     return new Promise((resolve) => {
       this.socket.api.downloadData().then((data) => {
-        console.log(data)
         data.storage.target = window.location.host
         resolve(data)
       })
