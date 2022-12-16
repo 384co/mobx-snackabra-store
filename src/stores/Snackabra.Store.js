@@ -114,13 +114,13 @@ class SnackabraStore {
           const channels = await cacheDb.getItem('sb_data_channels');
           console.log(migrated)
           if (migrated?.version === 2) {
-            if(channels){
+            if (channels) {
               this.channels = channels
             }
             resolve('success');
           }
           let channelList = []
-          if (sb_data) {
+          if (sb_data && migrated?.version !== 2) {
             Object.keys(sb_data.rooms).forEach((roomId) => {
               for (let x in sb_data.rooms[roomId]) {
                 if (!this.rooms[roomId]) {
@@ -130,7 +130,6 @@ class SnackabraStore {
                 this.rooms[roomId][x] = sb_data.rooms[roomId][x];
               }
               cacheDb.setItem('sb_data_' + roomId, toJS(this.rooms[roomId])).then(() => {
-                console.log(channelList)
                 delete this.rooms[roomId];
               })
             })
@@ -165,6 +164,7 @@ class SnackabraStore {
 
   save = () => {
     cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
+      console.log(this.rooms)
       this.channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
       cacheDb.setItem('sb_data_channels', this.channels)
     })
@@ -279,6 +279,7 @@ class SnackabraStore {
     }
     return [];
   }
+
   set messages(messages) {
     if (this.rooms[this.activeRoom]) {
       this.rooms[this.activeRoom].messages = messages;
@@ -543,8 +544,16 @@ class SnackabraStore {
     }
   };
   setRoom = (channelId, roomData) => {
-    this.rooms[channelId] = roomData;
-    this.activeroom = channelId;
+    return new Promise((resolve, reject) => {
+      try {
+        this.rooms[channelId] = roomData;
+        this.activeroom = channelId;
+        resolve()
+      } catch (e) {
+        reject(e)
+      }
+    })
+
   };
   connect = async ({
     roomId,
@@ -583,11 +592,13 @@ class SnackabraStore {
               contacts: {},
               messages: []
             };
-            this.setRoom(channelId, roomData);
-            this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
-            this.socket.userName = roomData.userName;
-            this.sharedKey = this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"])
-            this.save();
+            this.setRoom(channelId, roomData).then(async ()=>{
+              console.log(this.rooms)
+              this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
+              this.socket.userName = roomData.userName;
+              this.sharedKey = this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"])
+              this.save();
+            })
           }
           resolve('connected');
         }).catch(e => {
@@ -602,8 +613,8 @@ class SnackabraStore {
   //   return this.rooms;
   // };
 
-  getChannel = (channel)=>{
-    return new Promise((resolve)=>{
+  getChannel = (channel) => {
+    return new Promise((resolve) => {
       cacheDb.getItem('sb_data_' + channel).then((data) => {
         resolve(data)
       })
