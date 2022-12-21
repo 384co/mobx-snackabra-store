@@ -471,6 +471,8 @@ class SnackabraStore {
         }).catch(e => {
           reject(e);
         });
+      }).catch(e => {
+        reject(e);
       });
     });
   };
