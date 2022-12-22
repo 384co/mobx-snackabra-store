@@ -65,6 +65,7 @@ class SnackabraStore {
       lastMessageTime: computed,
       lastSeenMessage: computed,
       sharedKey: computed,
+      channelList: observable,
       lastSeenMessageId: observable,
       lockEncryptionKey: observable,
       loadingMore: observable,
@@ -164,7 +165,9 @@ class SnackabraStore {
 
   save = () => {
     cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
-      this.channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
+      const channels = this.channels
+      channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
+      this.channels = channels;
       cacheDb.setItem('sb_data_channels', this.channels)
     })
   };
