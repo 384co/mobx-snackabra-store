@@ -13,8 +13,7 @@ export class SnackabraProvider extends React.Component {
 
   componentDidMount() {
     const sbContext = new SnackabraStore(this.props.config)
-
-    sbContext.init().then(() => {
+    sbContext.ready.then(() => {
       this.setState({ sbContext: sbContext, ready: true }, () => {
         console.log("SB Store is ready")
       })
@@ -22,7 +21,8 @@ export class SnackabraProvider extends React.Component {
   }
 
   loadChannelList = () => {
-    sbContext.init().then(() => {
+
+    sbContext.ready.then(() => {
       this.setState({ sbContext: sbContext, ready: true }, () => {
         console.log("SB Store is ready")
       })

@@ -12,6 +12,9 @@ class SnackabraStore {
     channel_ws: 'wss://r.384co.workers.dev',
     storage_server: 'https://s.384co.workers.dev'
   };
+  ready = new Promise((resolve)=>{
+    this.readyResolver = resolve
+  })
   channel;
   storage;
   rooms = {};
@@ -87,6 +90,7 @@ class SnackabraStore {
       storage: observable
     });
     onBecomeUnobserved(this, "rooms", this.suspend);
+    this.init()
   }
   resume = () => {
     // This will be used later to load the state of the room from a local store
@@ -139,15 +143,19 @@ class SnackabraStore {
             timestamp: Date.now(),
             version: 2
           }).then(() => {
+            this.readyResolver()
             resolve('success');
           })
 
         };
-        cacheDb = new IndexedKV(window, {
+        cacheDb = new IndexedKV({
           db: 'sb_data',
-          table: 'cache',
-          onReady: start
+          table: 'cache'
         });
+        console.log('here')
+        cacheDb.ready.then(()=>{
+          start()
+        })
       } catch (e) {
         console.error(e);
         reject('failed to initialize Snackabra.Store');
