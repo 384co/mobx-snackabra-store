@@ -510,11 +510,13 @@ class SnackabraStore {
         messageCallback: (m) => { console.log(m) },
         key: roomData.roomData[room].key,
       }
-      connectPromises.push(this.connect(options))
+      connectPromises.push(this.connect(options, true))
     })
-    Promise.all(connectPromises).then((r) => {
+    Promise.all(connectPromises).then(() => {
       Object.keys(roomData.roomData).forEach((room) => {
-        this.rooms[this.activeRoom].contacts = roomData.contacts;
+        this.rooms[room].name = roomData.roomMetadata[room].name
+        this.rooms[room].lastMessageTime = roomData.roomMetadata[room].lastMessageTime
+        this.rooms[room].contacts = roomData.contacts;
       })
       this.save()
     })
@@ -604,7 +606,7 @@ class SnackabraStore {
     messageCallback,
     key,
     secret
-  }) => {
+  },overwrite) => {
     return new Promise(async (resolve, reject) => {
       try {
         let channel, channelId;
@@ -626,7 +628,7 @@ class SnackabraStore {
             this.socket = c;
             this.activeroom = channelId;
             const channel = await this.getChannel(channelId);
-            const roomData = channel ? channel : {
+            const roomData = channel && !overwrite ? channel : {
               name: 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
               id: channelId,
               key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
