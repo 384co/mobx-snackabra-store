@@ -12,7 +12,7 @@ class SnackabraStore {
     channel_ws: 'wss://r.384co.workers.dev',
     storage_server: 'https://s.384co.workers.dev'
   };
-  ready = new Promise((resolve)=>{
+  ready = new Promise((resolve) => {
     this.readyResolver = resolve
   })
   channel;
@@ -46,7 +46,7 @@ class SnackabraStore {
     this.Crypto = new SB.SBCrypto();
     this.storage = this.SB.storage;
     if (!sbConfig) {
-      console.log('Using default servers in Snackabra.store', this.sbConfig);
+      console.info('Using default servers in Snackabra.store', this.sbConfig);
     }
     makeObservable(this, {
       createRoom: action,
@@ -94,13 +94,28 @@ class SnackabraStore {
   }
   resume = () => {
     // This will be used later to load the state of the room from a local store
-    console.log(`Resuming...`);
   };
   suspend = () => {
     // This will be used later to offload the state of the room to a local store
     this.save();
-    console.log(`Suspending`, this);
   };
+
+  async getAllChannels() {
+    const channels = await cacheDb.getItem('sb_data_channels');
+    let channelData = {}
+    if(channels){
+      for(let x in channels){
+        const channel = await cacheDb.getItem('sb_data_' + channels[x]._id)
+        if(channel){
+          channelData[channel.id] = channel
+        }
+      }
+      
+    }
+    return channelData
+    
+  }
+
   init = () => {
     return new Promise(resolve => {
       try {
@@ -152,8 +167,7 @@ class SnackabraStore {
           db: 'sb_data',
           table: 'cache'
         });
-        console.log('here')
-        cacheDb.ready.then(()=>{
+        cacheDb.ready.then(() => {
           start()
         })
       } catch (e) {
@@ -255,23 +269,23 @@ class SnackabraStore {
     this.save();
   }
 
-  updateChannelName = ({name, channelId}) =>{
-    return new Promise((resolve, reject)=>{
-      try{
-        this.getChannel(channelId).then((data)=>{
+  updateChannelName = ({ name, channelId }) => {
+    return new Promise((resolve, reject) => {
+      try {
+        this.getChannel(channelId).then((data) => {
           this.rooms[channelId] = data
-          this.rooms[channelId].name = name 
+          this.rooms[channelId].name = name
           this.channels[channelId].name = name
           this.save();
           resolve('success')
         })
-      }catch(e){
+      } catch (e) {
         reject(e)
       }
 
     })
-}
-  
+  }
+
   get user() {
     return this.socket ? {
       _id: JSON.stringify(this.socket.exportable_pubKey),
@@ -608,7 +622,7 @@ class SnackabraStore {
           channelId // since we're owner this is optional
         ).then(c => c.ready).then(async (c) => {
           if (c) {
-            console.info(c)
+            console.log(c)
             this.socket = c;
             this.activeroom = channelId;
             const channel = await this.getChannel(channelId);
