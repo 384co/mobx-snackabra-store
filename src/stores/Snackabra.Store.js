@@ -103,17 +103,17 @@ class SnackabraStore {
   async getAllChannels() {
     const channels = await cacheDb.getItem('sb_data_channels');
     let channelData = {}
-    if(channels){
-      for(let x in channels){
+    if (channels) {
+      for (let x in channels) {
         const channel = await cacheDb.getItem('sb_data_' + channels[x]._id)
-        if(channel){
+        if (channel) {
           channelData[channel.id] = channel
         }
       }
-      
+
     }
     return channelData
-    
+
   }
 
   init = () => {
@@ -186,12 +186,14 @@ class SnackabraStore {
   }
 
   save = () => {
-    cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
-      const channels = this.channels
-      channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
-      this.channels = channels;
-      cacheDb.setItem('sb_data_channels', this.channels)
-    })
+    if (this.rooms[this.activeroom]?.id) {
+      cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
+        const channels = this.channels
+        channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
+        this.channels = channels;
+        cacheDb.setItem('sb_data_channels', this.channels)
+      })
+    }
   };
 
   get channels() {
@@ -518,6 +520,7 @@ class SnackabraStore {
         this.rooms[room].lastMessageTime = roomData.roomMetadata[room].lastMessageTime
         this.rooms[room].contacts = roomData.contacts;
       })
+    }).finally(() => {
       this.save()
     })
   };
@@ -606,7 +609,7 @@ class SnackabraStore {
     messageCallback,
     key,
     secret
-  },overwrite) => {
+  }, overwrite) => {
     return new Promise(async (resolve, reject) => {
       try {
         let channel, channelId;
