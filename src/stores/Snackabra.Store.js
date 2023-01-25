@@ -504,25 +504,33 @@ class SnackabraStore {
     });
   };
 
-  importKeys = async roomData => {
-    let connectPromises = [];
-    Object.keys(roomData.roomData).forEach((room) => {
-      const options = {
-        roomId: room,
-        messageCallback: (m) => { console.log(m) },
-        key: roomData.roomData[room].key,
-      }
-      connectPromises.push(this.connect(options, true))
-    })
-    Promise.all(connectPromises).then(() => {
+  importKeys = roomData => {
+    return new Promise((resolve, reject) => {
+      let connectPromises = [];
       Object.keys(roomData.roomData).forEach((room) => {
+        const options = {
+          roomId: room,
+          messageCallback: (m) => { console.log(m) },
+          key: roomData.roomData[room].key,
+          name: roomData.roomMetadata[room].name
+        }
+        this.rooms[room] = {}
+        this.rooms[room].id = room
         this.rooms[room].name = roomData.roomMetadata[room].name
         this.rooms[room].lastMessageTime = roomData.roomMetadata[room].lastMessageTime
         this.rooms[room].contacts = roomData.contacts;
+        connectPromises.push(this.connect(options, true))
       })
-    }).finally(() => {
-      this.save()
+      Promise.all(connectPromises).then(() => {
+
+      }).catch((e) => {
+        reject(e)
+      }).finally(() => {
+        this.save()
+        resolve()
+      })
     })
+
   };
 
   importRoom = async roomData => {
@@ -576,7 +584,15 @@ class SnackabraStore {
 
   // This isnt in the the jslib atm
   lockRoom = () => {
-    return this.socket.api.lockRoom();
+    return new Promise((resolve, reject) => {
+      try {
+        this.socket.api.lock().then((locked) => {
+          console.log(locked)
+        })
+      } catch (e) {
+        reject(e)
+      }
+    })
   };
   getExistingRoom = channelId => {
     throw new Error('getExistingRoom is deprecated')
@@ -608,9 +624,19 @@ class SnackabraStore {
     username,
     messageCallback,
     key,
-    secret
+    secret,
+    name
   }, overwrite) => {
     return new Promise(async (resolve, reject) => {
+      console.warn({
+        roomId,
+        username,
+        messageCallback,
+        key,
+        secret,
+        name
+      })
+      console.warn(overwrite, name)
       try {
         let channel, channelId;
         if (secret) {
@@ -632,7 +658,7 @@ class SnackabraStore {
             this.activeroom = channelId;
             const channel = await this.getChannel(channelId);
             const roomData = channel && !overwrite ? channel : {
-              name: 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
+              name: overwrite && name ? name : 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
               id: channelId,
               key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
               userName: username !== '' && typeof username !== 'undefined' ? username : '',
@@ -641,6 +667,7 @@ class SnackabraStore {
               contacts: {},
               messages: []
             };
+            console.warn(roomData)
             this.setRoom(channelId, roomData).then(async () => {
               this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
               this.socket.userName = roomData.userName;
