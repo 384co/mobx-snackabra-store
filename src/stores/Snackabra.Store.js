@@ -696,12 +696,26 @@ class SnackabraStore {
     })
   }
 
-  downloadRoomData = () => {
-    return new Promise((resolve) => {
-      this.socket.api.downloadData().then((data) => {
-        data.storage.target = window.location.host
-        resolve(data)
-      })
+  downloadRoomData = (roomId, roomKeys) => {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log(roomKeys)
+        this.connect({
+          roomId: roomId,
+          messageCallback: (m) => { console.log(m) },
+          key: roomKeys
+        }).then(() => {
+          this.socket.api.downloadData().then((data) => {
+            data.storage.target = window.location.host
+            resolve(data)
+          })
+        }).catch(reject)
+
+      } catch (e) {
+        console.log(e)
+        reject(e)
+      }
+
     })
   };
 }
