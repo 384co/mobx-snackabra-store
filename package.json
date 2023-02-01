@@ -1,6 +1,6 @@
 {
   "name": "mobx-snackabra-store",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "A Mobx implementation of a state store for use in React PWA's",
   "main": "./index.js",
   "module": "./index.js",
