@@ -1,5 +1,4 @@
 import { makeObservable, observable, action, computed, onBecomeUnobserved, configure, toJS } from "mobx";
-import { textChangeRangeIsUnchanged } from "typescript";
 import IndexedKV from "../IndexedKV";
 const SB = require('snackabra');
 let cacheDb;
@@ -7,6 +6,7 @@ configure({
   useProxies: "never"
 });
 class SnackabraStore {
+  // Default sbConfig
   sbConfig = {
     channel_server: 'https://r.384co.workers.dev',
     channel_ws: 'wss://r.384co.workers.dev',
@@ -92,9 +92,7 @@ class SnackabraStore {
     onBecomeUnobserved(this, "rooms", this.suspend);
     this.init()
   }
-  resume = () => {
-    // This will be used later to load the state of the room from a local store
-  };
+
   suspend = () => {
     // This will be used later to offload the state of the room to a local store
     this.save();
@@ -119,16 +117,6 @@ class SnackabraStore {
   init = () => {
     return new Promise(resolve => {
       try {
-        // const start = async () => {
-        //   const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
-        //   for (let x in sb_data) {
-        //     if (x !== 'SB' && x !== "sbConfig" && x !== "Crypto") {
-        //       this[x] = sb_data[x];
-        //     }
-        //   }
-        //   resolve('success');
-        // };
-
         const start = async () => {
           const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
           const migrated = await cacheDb.getItem('sb_data_migrated');
@@ -584,7 +572,7 @@ class SnackabraStore {
     return this.socket.api.setMOTD(motd);
   };
 
-  // This isnt in the the jslib atm
+  //TODO: This isnt in the the jslib atm
   lockRoom = () => {
     return new Promise((resolve, reject) => {
       try {
@@ -640,12 +628,11 @@ class SnackabraStore {
         }
         key = key ? key : channel?.key;
         channelId = roomId ? roomId : channel?.channelId;
-        this.SB.connect(m => {
-          this.receiveMessage(m, messageCallback);
-        },
-          // must have a message handler:
-          key ? key : null,
-          // if we omit then we're connecting anonymously (and not as owner)
+        this.SB.connect(
+          (m) => {           // must have a message handler:
+            this.receiveMessage(m, messageCallback);
+          },
+          key ? key : null, // if we omit then we're connecting anonymously (and not as owner)
           channelId // since we're owner this is optional
         ).then(c => c.ready).then(async (c) => {
           if (c) {
@@ -680,9 +667,6 @@ class SnackabraStore {
       }
     });
   };
-  // getRooms = () => {
-  //   return this.rooms;
-  // };
 
   getChannel = (channel) => {
     return new Promise((resolve) => {
