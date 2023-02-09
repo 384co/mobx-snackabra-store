@@ -613,6 +613,7 @@ class SnackabraStore {
     return new Promise((resolve, reject) => {
       try {
         this.rooms[channelId] = roomData;
+        this.rooms[channelId].admin = this.socket?.owner;
         this.activeroom = channelId;
         resolve()
       } catch (e) {
@@ -631,7 +632,7 @@ class SnackabraStore {
     contacts
   }, overwrite) => {
     return new Promise(async (resolve, reject) => {
-
+      this.SB = null;
       try {
         let channel, channelId;
         this.SB = new SB.Snackabra(this.config);
@@ -649,7 +650,6 @@ class SnackabraStore {
           channelId // since we're owner this is optional
         ).then(c => c.ready).then(async (c) => {
           if (c) {
-            console.log(c)
             this.socket = c;
             this.activeroom = channelId;
             const channel = await this.getChannel(channelId);
@@ -663,7 +663,7 @@ class SnackabraStore {
               contacts: contacts ? contacts : {},
               messages: []
             };
-            console.warn(roomData)
+            
             this.setRoom(channelId, roomData).then(async () => {
               this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
               this.socket.userName = roomData.userName;
