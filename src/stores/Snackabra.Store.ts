@@ -1,21 +1,16 @@
 import { makeObservable, observable, action, computed, onBecomeUnobserved, configure, toJS } from "mobx";
 import IndexedKV from "../IndexedKV";
-import {SBCrypto, Snackabra} from "snackabra"
+import { Channel, ChannelSocket, SBCrypto, SBServer, Snackabra } from "snackabra"
 let cacheDb: IndexedKV;
 
 configure({
   useProxies: "never"
 });
 
-interface SbConfig {
-  channel_server: string,
-  channel_ws: string,
-  storage_server: string
-}
 
 class SnackabraStore {
   // Default sbConfig
-  sbConfig: SbConfig  = {
+  sbConfig: SBServer = {
     channel_server: 'https://r.384co.workers.dev',
     channel_ws: 'wss://r.384co.workers.dev',
     storage_server: 'https://s.384co.workers.dev'
@@ -24,8 +19,8 @@ class SnackabraStore {
   ready = new Promise((resolve: Function) => {
     this.readyResolver = resolve
   })
-  channel: SB.channel;
-  storage;
+  channel: Snackabra["channel"] | undefined;
+  // storage: Snackabra["storage"];
   rooms = {};
   locked = false;
   isVerifiedGuest = false;
@@ -47,9 +42,9 @@ class SnackabraStore {
   activeRoom;
   channelList = {};
   joinRequests = {};
-  SB = {};
+  SB: Snackabra | null;
   Crypto = {};
-  constructor(sbConfig: SbConfig) {
+  constructor(sbConfig: SBServer) {
     this.config = sbConfig ? sbConfig : toJS(this.sbConfig);
     this.SB = new Snackabra(this.config);
     this.Crypto = new SBCrypto();
@@ -66,12 +61,7 @@ class SnackabraStore {
       user: computed,
       channels: computed,
       username: computed,
-      socket: computed,
-      admin: computed,
-      roomName: computed,
-      motd: computed,
-      activeroom: computed,
-      messages: computed,
+      socket: computed,30
       contacts: computed,
       lockKey: computed,
       lastMessageTime: computed,
@@ -174,7 +164,7 @@ class SnackabraStore {
     });
   };
 
-  open = (callback) => {
+  open = (callback: Function) => {
     cacheDb = new IndexedKV(window, {
       db: 'sb_data',
       table: 'cache',
@@ -182,7 +172,7 @@ class SnackabraStore {
     });
   }
 
-  save = () => {
+  save = (): void => {
     if (this.rooms[this.activeroom]?.id) {
       cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
         const channels = this.channels
@@ -229,10 +219,10 @@ class SnackabraStore {
   set config(config) {
     this.sbConfig = config;
   }
-  set storage(storage) {
+  set storage(storage: Snackabra["storage"] | undefined ) {
     this.storage = storage;
   }
-  get storage() {
+  get storage(): Snackabra["storage"] | undefined {
     return this.storage ? toJS(this.storage) : undefined;
   }
   get socket() {
