@@ -11,9 +11,9 @@ configure({
 class SnackabraStore {
   // Default sbConfig
   sbConfig: SBServer = {
-    channel_server: 'https://r.384co.workers.dev',
-    channel_ws: 'wss://r.384co.workers.dev',
-    storage_server: 'https://s.384co.workers.dev'
+    channel_server: 'https://channel.384co.workers.dev',
+    channel_ws: 'wss://channel.384co.workers.dev',
+    storage_server: 'https://storage.384co.workers.dev'
   };
   readyResolver: Function | undefined
   ready = new Promise((resolve: Function) => {
@@ -26,8 +26,6 @@ class SnackabraStore {
   isVerifiedGuest = false;
   roomMetadata = {};
   userName = 'Me';
-  ownerRotation;
-  ownerKey;
   roomCapacity = 20;
   keys = {};
   userKey = {};
@@ -36,10 +34,9 @@ class SnackabraStore {
   loadingMore = false;
   lockEncryptionKey = false;
   lastMessageTimeStamp = 0;
-  lastSeenMessageId;
+  ownerKey: string | undefined;
   moreMessages = false;
-  replyTo;
-  activeRoom;
+  activeRoom: string | undefined;
   channelList = {};
   joinRequests = {};
   SB: Snackabra | null;
@@ -61,14 +58,13 @@ class SnackabraStore {
       user: computed,
       channels: computed,
       username: computed,
-      socket: computed,30
+      socket: computed,
       contacts: computed,
       lockKey: computed,
       lastMessageTime: computed,
       lastSeenMessage: computed,
       sharedKey: computed,
       channelList: observable,
-      lastSeenMessageId: observable,
       lockEncryptionKey: observable,
       loadingMore: observable,
       sbConfig: observable,
@@ -77,9 +73,7 @@ class SnackabraStore {
       rooms: observable,
       locked: observable,
       isVerifiedGuest: observable,
-      ownerRotation: observable,
       roomCapacity: observable,
-      replyTo: observable,
       activeRoom: observable,
       keys: observable,
       userKey: observable,
@@ -196,7 +190,12 @@ class SnackabraStore {
   }
 
   set lastSeenMessage(messageId) {
-    this.rooms[this.activeRoom].lastSeenMessageId = messageId;
+    if (this.activeRoom) {
+      this.rooms[this.activeRoom].lastSeenMessageId = messageId;
+    } else {
+      throw new Error("no active room")
+    }
+
   }
   get lastSeenMessage() {
     return toJS(this.rooms[this.activeRoom].lastSeenMessageId);
@@ -219,7 +218,7 @@ class SnackabraStore {
   set config(config) {
     this.sbConfig = config;
   }
-  set storage(storage: Snackabra["storage"] | undefined ) {
+  set storage(storage: Snackabra["storage"] | undefined) {
     this.storage = storage;
   }
   get storage(): Snackabra["storage"] | undefined {

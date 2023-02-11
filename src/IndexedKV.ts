@@ -2,21 +2,24 @@ export declare module IndexedKV { }
 
 interface IndexedKVOptions {
   db: string,
-  table: string,
-  onReady?: Function
+  table: string
 }
 
+export type StructuredCloneData = Exclude<unknown, Function>
+
+/**
+ * IndexedKV is a simple wrapper around IndexedDB
+ */
 class IndexedKV {
 
   private indexedDB: IDBFactory;
-  public db: IDBDatabase | undefined;
+  private readyResolver: Function | undefined;
 
-  readyResolver: Function | undefined;
-  ready = new Promise((resolve) => {
+  public db: IDBDatabase | undefined;
+  public ready = new Promise((resolve) => {
     this.readyResolver = resolve
   })
-
-  options: IndexedKVOptions = {
+  public options: IndexedKVOptions = {
     db: 'MyDB',
     table: 'default'
   }
@@ -39,7 +42,7 @@ class IndexedKV {
     openReq.onsuccess = () => {
       this.db = openReq.result;
       if (this.readyResolver) {
-        this.readyResolver()
+        this.readyResolver(true)
       }
     };
 
@@ -51,7 +54,33 @@ class IndexedKV {
 
   }
 
-  openCursor = (regex: RegExp, callback: Function) => {
+  /**
+   * Select what database to use
+   */
+  private useDatabase = (): void => {
+    const newReq = this.indexedDB.open(this.options.db);
+    newReq.onsuccess = () => {
+      this.db = newReq.result;
+      if (this.readyResolver) {
+        this.readyResolver(true)
+      }
+    };
+    newReq.onerror = event => {
+      console.error(event);
+    };
+
+    newReq.onupgradeneeded = () => {
+      this.db = newReq.result;
+    };
+  }
+  /**
+   * Similar to "Select * WHERE $regex" implementation
+   * 
+   * @param regex {Regular expression matcher}
+   * @param callback {Function to perform (optional) }
+   * @returns Promise<any>
+   */
+  openCursor = (regex: RegExp, callback: Function): Promise<Array<StructuredCloneData>> => {
     return new Promise((resolve, reject) => {
       this.ready.then(() => {
         if (this.db) {
@@ -82,25 +111,14 @@ class IndexedKV {
     })
   }
 
-  useDatabase = () => {
-    const newReq = this.indexedDB.open(this.options.db);
-    newReq.onsuccess = () => {
-      this.db = newReq.result;
-      if (this.readyResolver) {
-        this.readyResolver()
-      }
-    };
-    newReq.onerror = event => {
-      console.error(event);
-    };
-
-    newReq.onupgradeneeded = () => {
-      this.db = newReq.result;
-    };
-  }
-
-  // Set item will insert or replace
-  setItem = (key: string, value: StructuredSerializeOptions) => {
+  /**
+   * setItem will add or replace an entry by key
+   * 
+   * @param key : string | number
+   * @param value : A structured clone algorithm compatible data type https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
+   * @returns 
+   */
+  setItem = (key: string | number, value: StructuredCloneData): Promise<IDBValidKey> => {
     return new Promise((resolve, reject) => {
       this.ready.then(() => {
         if (this.db) {
@@ -111,24 +129,24 @@ class IndexedKV {
           };
           request.onsuccess = () => {
             const data = request.result;
-
             if (data?.value) {
+              //Data exists we update the value
               data.value = value;
               const requestUpdate = objectStore.put(data);
+
               requestUpdate.onerror = event => {
                 reject(event)
               };
-              requestUpdate.onsuccess = () => {
+              requestUpdate.onsuccess = (event) => {
                 resolve(requestUpdate.result)
               };
             } else {
-
               const requestAdd = objectStore.add({ key: key, value: value });
+
               requestAdd.onsuccess = () => {
                 resolve(requestAdd.result)
 
               };
-
               requestAdd.onerror = event => {
                 console.error(event)
                 reject(event)
@@ -143,7 +161,7 @@ class IndexedKV {
   }
 
   //Add item but not replace
-  add = (key: string, value: StructuredSerializeOptions) => {
+  add = (key: string | number, value: StructuredCloneData): Promise<any> => {
     return new Promise((resolve, reject) => {
       this.ready.then(() => {
         if (this.db) {
@@ -181,7 +199,7 @@ class IndexedKV {
     })
   }
 
-  getItem = (key: string) => {
+  getItem = (key: string | number): Promise<any> => {
     return new Promise((resolve, reject) => {
       this.ready.then(() => {
         if (this.db) {
@@ -208,8 +226,11 @@ class IndexedKV {
       });
     })
   }
-
-  getAll = () => {
+  /**
+   * 
+   * @returns Promise<Array<any> | null>
+   */
+  getAll = (): Promise<Array<any> | null> => {
     return new Promise((resolve, reject) => {
       this.ready.then(() => {
         if (this.db) {
@@ -236,8 +257,12 @@ class IndexedKV {
       });
     })
   }
-
-  removeItem = (key: string) => {
+  /**
+   * 
+   * @param key 
+   * @returns 
+   */
+  removeItem = (key: string | number): Promise<boolean> => {
     return new Promise((resolve, reject) => {
       this.ready.then(() => {
         if (this.db) {

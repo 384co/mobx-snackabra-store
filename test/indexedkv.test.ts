@@ -1,26 +1,78 @@
 import { describe, expect, test } from '@jest/globals';
 import IndexedKV from '../src/IndexedKV'
+require("fake-indexeddb/auto");
 
 const options = {
     db: 'test',
     table: 'test_table',
 }
 
+interface user { id: number, name: string }
+
+let users: Array<user> = [
+    { id: 1, name: 'Bob' },
+    { id: 2, name: 'Alice' }
+]
+
 describe('IndexedKV Database', () => {
+    let db: IndexedKV;
+    beforeAll(() => {
+        db = new IndexedKV(options);
+    })
 
-    // beforeAll(async () => {
-    //     await page.goto('https://w3resource.com');
-    // });
-
-    test('should be titled "w3resource"', async () => {
-        await page.goto('https://w3resource.com');
-        const title = await page.title()
-        console.log("'" + title + "'")
-        expect(title).toMatch(/w3resource/);
+    test('open DB', () => {
+        expect(db instanceof IndexedKV).toBe(true);
     });
 
-    it('open DB', () => {
-        const db = new IndexedKV(options);
-        expect(typeof db).toBe("object");
+    test('DB is ready', async () => {
+        expect(await db.ready).toBe(true);
+    });
+
+    test('DB insert Alice', async () => {
+        let result = await db.setItem(users[1].id, users[1])
+        expect(result).toBe(users[1].id);
+    });
+
+    test('DB add Alice (again)', async () => {
+        let result = await db.add(users[1].id, users[1])
+        expect(typeof result).toBe('object');
+        expect(result.id).toBe(users[1].id);
+    });
+
+    test('DB insert/replace Alice (again again)', async () => {
+        let result = await db.setItem(users[1].id, users[1])
+        expect(result).toBe(users[1].id);
+    });
+
+    test('DB add Bob', async () => {
+        let result = await db.add(users[0].id, users[0])
+        expect(result).toBe(users[0].id);
+    });
+
+    test('DB get Bob', async () => {
+        let result = await db.getItem(users[0].id)
+        expect(result.id).toBe(users[0].id);
+    });
+
+    test('DB get all entries', async () => {
+        let result = await db.getAll()
+        expect(result![0].key).toBe(users[0].id);
+        expect(result![1].key).toBe(users[1].id);
+    });
+
+    test('Goodbye Bob!', async () => {
+        let result = await db.removeItem(users[0].id)
+        expect(result).toBe(true);
+    });
+
+    test('Check to make sure Alice is still with us', async () => {
+        let result = await db.getAll()
+        let isAlice = false;
+        result!.forEach(user => {
+            if (user.value.name === 'Alice') {
+                isAlice = true;
+            }
+        });
+        expect(isAlice).toBe(true);
     });
 });
