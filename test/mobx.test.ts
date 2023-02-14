@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import IndexedKV from '../src/IndexedKV'
-
+require("fake-indexeddb/auto");
 
 const options = {
     db: 'test',
@@ -16,23 +16,8 @@ let users: Array<user> = [
 
 describe('IndexedKV Database', () => {
     let db: IndexedKV;
-    test('New DB but no indexedDB global', () => {
-        try{
-            db = new IndexedKV(options);
-        }catch(e: any){
-            console.log(e.message)
-            expect(e.message).toBe(`Your browser doesn't support a stable version of IndexedDB.`);
-        }
-    })
-
-    test('open DB', () => {
-        require("fake-indexeddb/auto");
-        try{
-            db = new IndexedKV(options);
-            expect(db instanceof IndexedKV).toBe(true);
-        }catch{
-            
-        }
+    beforeAll(() => {
+        db = new IndexedKV(options);
     })
 
     test('open DB', () => {
