@@ -1,9 +1,10 @@
-export declare module IndexedKV { }
-
-interface IndexedKVOptions {
-  db: string,
-  table: string
+export declare module IndexedKV {
+  export interface IndexedKVOptions {
+    db: string,
+    table: string
+  }
 }
+
 
 export type StructuredCloneData = Exclude<unknown, Function>
 
@@ -23,7 +24,9 @@ const Ready = (...args: any[]) => {
 }
 
 /**
- * IndexedKV is a simple wrapper around IndexedDB
+ * @description
+ * IndexedKV is a wrapper around IndexedDB that provides a simple interface for
+ * storing and retrieving data.
  */
 class IndexedKV {
 
@@ -34,12 +37,12 @@ class IndexedKV {
   public IndexedKVReadyFlag = new Promise((resolve) => {
     this.readyResolver = resolve
   })
-  public options: IndexedKVOptions = {
+  public options: IndexedKV.IndexedKVOptions = {
     db: 'MyDB',
     table: 'default'
   }
 
-  constructor(options: IndexedKVOptions | undefined) {
+  constructor(options: IndexedKV.IndexedKVOptions | undefined) {
     this.options = Object.assign(this.options, options)
     if (!window.indexedDB) {
       throw new Error("Your browser doesn't support a stable version of IndexedDB.");
@@ -67,7 +70,7 @@ class IndexedKV {
   }
 
   /**
-   * Select what database to use
+   * @description Select what database to use
    */
   private useDatabase(): void {
     const newReq = this.indexedDB.open(this.options.db);
@@ -88,13 +91,14 @@ class IndexedKV {
   }
   /**
    * Similar to "Select * WHERE $regex" implementation
+   * Matches the key against the regex and returns the value
    * 
    * @param regex {Regular expression matcher}
-   * @param callback {Function to perform (optional) }
-   * @returns Promise<any>
+   * @param {Function=} callback
+   * @returns {Promise<Array<IDBRequest["result"]>>}
    */
   @Ready
-  openCursor(regex: RegExp, callback: Function): Promise<Array<StructuredCloneData>> {
+  openCursor(regex: RegExp, callback?: Function): Promise<Array<IDBRequest["result"]>> {
     return new Promise((resolve, reject) => {
       if (this.db) {
         const transaction: IDBTransaction = this.db.transaction([this.options.table], "readonly");
@@ -126,9 +130,9 @@ class IndexedKV {
   /**
    * setItem will add or replace an entry by key
    * 
-   * @param key : string | number
-   * @param value : A structured clone algorithm compatible data type https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
-   * @returns 
+   * @param {string | number} key
+   * @param {StructuredCloneData} value
+   * @returns {Promise<IDBValidKey>}
    */
   @Ready
   setItem(key: string | number, value: StructuredCloneData): Promise<IDBValidKey> {
@@ -171,9 +175,16 @@ class IndexedKV {
 
   }
 
-  //Add item but not replace
+  /**
+   * @description
+   * Add an item to the database
+   * 
+   * @param {string | number} key
+   * @param {StructuredCloneData} value
+   * @returns {Promise<IDBValidKey | IDBRequest["result"]>}
+   */
   @Ready
-  add(key: string | number, value: StructuredCloneData): Promise<any> {
+  add(key: string | number, value: StructuredCloneData): Promise<IDBValidKey | IDBRequest["result"]> {
     return new Promise((resolve, reject) => {
       if (this.db) {
 
@@ -208,8 +219,16 @@ class IndexedKV {
 
     })
   }
+
+  /**
+   * @description
+   * Get an item from the database
+   * 
+   * @param {string | number} key
+   * @returns 
+   */
   @Ready
-  public getItem(key: string | number): Promise<any> {
+  public getItem(key: string | number): Promise<IDBRequest["result"]> {
     return new Promise((resolve, reject) => {
       if (this.db) {
         const transaction = this.db.transaction([this.options.table]);
@@ -234,12 +253,15 @@ class IndexedKV {
       }
     })
   }
+
   /**
+   *@description
+   * Get all items from the database 
    * 
-   * @returns Promise<Array<any> | null>
+   * @returns {Promise<Array<any> | null>}
    */
   @Ready
-  getAll(): Promise<Array<any> | null> {
+  getAll(): Promise<Array<IDBRequest["result"]> | null> {
     return new Promise((resolve, reject) => {
       if (this.db) {
         const transaction = this.db.transaction([this.options.table]);
@@ -264,10 +286,13 @@ class IndexedKV {
       }
     })
   }
+
   /**
+   * @description
+   * Remove an item from the database
    * 
-   * @param key 
-   * @returns 
+   * @param {string | number} key
+   * @returns {Promise<boolean>}
    */
   @Ready
   removeItem(key: string | number): Promise<boolean> {

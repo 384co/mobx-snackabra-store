@@ -1,6 +1,6 @@
 import { makeObservable, observable, action, computed, onBecomeUnobserved, toJS } from "mobx";
 import IndexedKV from "../IndexedKV";
-import ChannelStore from "./Channel.Store";
+import ChannelStore, { ChannelOptions } from "./Channel.Store";
 import { Channel, ChannelSocket, SBCrypto, SBServer, Snackabra } from "snackabra"
 
 
@@ -115,6 +115,42 @@ class SnackabraStore {
     this.channelList = channels
   }
 
+  create = (options: ChannelOptions, secret: string) => {
+    return new Promise((resolve, reject) => {
+      const channelStore = new ChannelStore(this.cacheDb, options)
+      channelStore.create(secret).then(() => {
+        if (channelStore.id) {
+          this.channelList[channelStore.id] = channelStore
+          resolve(channelStore)
+        } else {
+          reject('channelStore.id is undefined')
+        }
+      }).catch((e) => {
+        reject(e)
+      })
+    })
+  }
+
+  connect = (options: ChannelOptions) => {
+    return new Promise((resolve, reject) => {
+      if (options.id && this.channelList[options.id] instanceof ChannelStore) {
+        resolve(this.channelList[options.id])
+      } else {
+        const channelStore = new ChannelStore(this.cacheDb, options)
+        channelStore.connect().then(() => {
+          if (channelStore.id) {
+            this.channelList[channelStore.id] = channelStore
+            resolve(this.channelList[channelStore.id])
+          } else {
+            reject('channelStore.id is undefined')
+          }
+        }).catch((e) => {
+          reject(e)
+        })
+      }
+    })
+  }
+
   /**
    * @description 
    * Imports a channel from a JSON file
@@ -125,7 +161,7 @@ class SnackabraStore {
   @Ready
   importKeys = (channel: object) => {
     return new Promise((resolve, reject) => {
-      let connectPromises = [];
+      let connectPromises: Array<Promise<T>> = [];
       Object.keys(roomData.roomData).forEach((room) => {
         const options = {
           roomId: room,

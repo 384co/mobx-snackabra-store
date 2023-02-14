@@ -7,6 +7,7 @@
   "scripts": {
     "test": "jest --runInBand --coverage --verbose --detectOpenHandles --forceExit",
     "build": "./node_modules/.bin/babel src --out-dir lib",
+    "docs": "./node_modules/.bin/jsdoc -d docs -c jsdoc.json",
     "start": "npm run build && npm run watch",
     "nodemon": "nodemon --watch ./src -L -e js --ignore node_modules/ --exec \"npm run build\"",
     "watch": "concurrently -k -p \"[{name}]\" -n \"Watcher\" -c \"green.bold,cyan.bold,magenta.bold,white.bold\"  \"npm run nodemon\""
@@ -51,6 +52,7 @@
     "jest": "^29.4.2",
     "jest-environment-jsdom": "^29.4.2",
     "jest-puppeteer": "^7.0.0",
+    "jsdoc": "^4.0.0",
     "nodemon": "^2.0.14",
     "puppeteer": "^19.6.3",
     "ts-jest": "^29.0.5",

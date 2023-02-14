@@ -75,6 +75,12 @@ describe('IndexedKV Database', () => {
         expect(result![1].key).toBe(users[1].id);
     });
 
+    test('Db openCusor', async () => {
+        let result = await db.openCursor(/1/)
+        expect(result![0].key).toBe(users[0].id);
+        expect(result![1]?.key).toBe(undefined);
+    });
+
     test('Goodbye Bob!', async () => {
         let result = await db.removeItem(users[0].id)
         expect(result).toBe(true);
