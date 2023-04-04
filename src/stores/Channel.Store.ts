@@ -1,6 +1,7 @@
 import { makeAutoObservable, onBecomeUnobserved, toJS } from "mobx";
 import IndexedKV from "../IndexedKV";
-import { Channel, ChannelSocket, SBCrypto, SBServer, Snackabra } from "snackabra"
+import { Channel, ChannelSocket, SBCrypto, SBServer, Snackabra, SBMessage, ChannelKeys } from "snackabra"
+import { JsonWebKey } from "crypto";
 let cacheDb: IndexedKV;
 
 export interface ChannelData {
@@ -21,10 +22,35 @@ export interface ChannelMetadata {
 export interface ChannelOptions {
     name?: string;
     key?: JsonWebKey;
-    username?: string;
-    id?: string;
     messageCallback?: (message: any) => void;
-    sbConfig?: SBServer;
+}
+
+export interface SerializedChannel {
+    _id: string;
+    key: JsonWebKey;
+    name: string;
+    userName: string;
+    lastSeenMessage: number;
+    sharedKey: boolean | JsonWebKey;
+    messages: SBMessage[];
+}
+
+const Ready = (...args: any[]) => {
+    let target = args[0]
+    let descriptor = args[2]
+    const originalMethod = descriptor.value;
+    descriptor.value = async function () {
+        const obj = target.constructor.name
+        const prop = `${obj}ReadyFlag`
+        if (prop in this) {
+            await this[prop]
+        }
+        if (typeof this.socket === 'undefined') {
+            throw new Error('Socket is undefined')
+        }
+        return originalMethod.apply(this, arguments);
+
+    }
 }
 
 
@@ -43,51 +69,63 @@ export interface ChannelOptions {
  */
 class ChannelStore {
     // Default sbConfig
-    id: string | undefined;
+    _id: string | undefined;
     readyResolver: Function | undefined
-    ready = new Promise((resolve: Function) => {
+    // ready = new Promise((resolve: Function) => {
+    //     this.readyResolver = resolve
+    // })
+    ChannelStoreReadyFlag = new Promise((resolve: Function) => {
         this.readyResolver = resolve
     })
     cacheDb: IndexedKV;
-    channel: Snackabra["channel"] | undefined;
-    storage: Snackabra["storage"] | undefined;
+    channel?: Snackabra["channel"];
+    storage?: Snackabra["storage"];
     rooms = {};
     locked = false;
     isVerifiedGuest = false;
     roomMetadata = {};
     userName = 'Me';
     roomCapacity = 20;
-    keys = {};
-    userKey = {};
+    keys?: ChannelKeys;
+    userKey?: JsonWebKey;
+    sharedKey?: JsonWebKey;
     sharedKeyProp = false;
     //might be more of a local state thing
     loadingMore = false;
     lockEncryptionKey = false;
-    lastMessageTimeStamp = 0;
+    lastMessageTime = 0;
+    lastSeenMessage = 0;
     ownerKey: string | undefined;
     moreMessages = false;
-    channelList = {};
     joinRequests = {};
-    metadata: ChannelMetadata;
-    options: ChannelOptions = {
-        username: 'Me',
-        sbConfig: {
-            channel_server: 'https://channel.384co.workers.dev',
-            channel_ws: 'wss://channel.384co.workers.dev',
-            storage_server: 'https://storage.384co.workers.dev'
-        }
-    };
+    name?: string = 'Unnamed Channel';
+    metadata?: ChannelMetadata;
     SB: Snackabra;
     Crypto: SBCrypto;
-    constructor(cacheDb: IndexedKV, options: ChannelOptions) {
-        this.options = options ? Object.assign(toJS(this.options), options) : toJS(this.options);
+    messages: SBMessage[] = [];
+    messageCallback?: (message: any) => void;
+
+    constructor(cacheDb: IndexedKV, SB: Snackabra, Crypto: SBCrypto, options: ChannelOptions | undefined) {
+        this.SB = SB;
         this.cacheDb = cacheDb;
-        this.SB = new Snackabra(this.config);
-        this.Crypto = new SBCrypto();
-        this.storage = this.SB.storage;
-        if (!options.sbConfig) {
-            console.info('Using default servers in Snackabra.store', this.options.sbConfig);
+        this.Crypto = Crypto;
+        if (options) {
+            for (let x in options) {
+                switch (x) {
+                    case 'name':
+                        this.name = options.name;
+                        break;
+                    case 'key':
+                        this.userKey = options.key as JsonWebKey;
+                        break;
+                    case 'messageCallback':
+                        this.messageCallback = options.messageCallback;
+                        break;
+                }
+            }
         }
+        this.cacheDb = cacheDb;
+        this.storage = SB.storage;
         makeAutoObservable(this)
         onBecomeUnobserved(this, "rooms", this.suspend);
     }
@@ -97,7 +135,7 @@ class ChannelStore {
         this.save();
     };
 
-    private loadFromCache = (channelId: string): Promise<Channel | false> => {
+    private loadFromCache = (channelId: string): Promise<SerializedChannel | false> => {
         return new Promise(async (resolve, reject) => {
             try {
                 const channel = await cacheDb.getItem('sb_data_' + channelId);
@@ -112,55 +150,100 @@ class ChannelStore {
         });
     };
 
-    connect = (): Promise<this> => {
+    create = (secret: string): Promise<this> => {
+        return new Promise((resolve, reject) => {
+            // create a new channel (room), returns (owner) key and channel name:
+            this.SB.create(this.config, secret).then(handle => {
+                console.log(`you can (probably) connect here: localhost:3000/rooms/${handle.channelId}`);
+                // connect to the websocket with our handle info:
+                this.SB.connect(
+                    // must have a message handler:
+                    m => {
+                        this.receiveMessage(m, console.log);
+                    }, handle.key,
+                    // if we omit then we're connecting anonymously (and not as owner)
+                    handle.channelId // since we're owner this is optional
+                ).then(c => c.ready).then(c => {
+                    if (c) {
+
+                        this.socket = c;
+                        this.activeroom = handle.channelId;
+                        this.userName = 'Me';
+                        this.sharedKey = false;
+                        this.lastSeenMessage = 0;
+                        this.messages = [];
+                        this.rooms[handle.channelId] = {
+                            name: 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
+                            id: handle.channelId,
+                            key: handle.key,
+                            userName: 'Me',
+                            sharedKey: false,
+                            lastSeenMessage: 0,
+                            contacts: {},
+                            messages: []
+                        };
+                        if (this.readyResolver) {
+                            this.readyResolver()
+                        }
+                        this.save();
+                    }
+
+                    resolve(this);
+
+                }).catch(e => {
+                    reject(e);
+                });
+            }).catch(e => {
+                reject(e);
+            });
+        });
+    };
+
+    connect = (id: string, key?: JsonWebKey, roomName?: string, userName?: string): Promise<this> => {
+        this.userKey = key;
+        this._id = id;
         return new Promise(async (resolve, reject) => {
             try {
                 this.SB.connect(
                     (m) => {
-                        this.receiveMessage(m, this.options.messageCallback);
+                        this.receiveMessage(m, this.messageCallback);
                     },
-                    this.options.key,
-                    this.options.id
+                    this.userKey,
+                    this._id
                 ).then(c => c.ready).then(async (c) => {
                     if (c) {
                         this.socket = c;
+                        this.keys = c.keys;
                         if (this.socket.channelId) {
-                            this.loadFromCache(this.socket.channelId).then((channel) => {
+                            this.loadFromCache(this.socket.channelId).then(async (channel) => {
+                                let roomData;
                                 if (channel) {
-                                    const roomData = channel && !overwrite ? channel : {
-                                        name: overwrite && name ? name : 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
-                                        id: channelId,
-                                        key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
-                                        userName: username !== '' && typeof username !== 'undefined' ? username : '',
+                                    roomData = channel;
+                                } else {
+                                    roomData = {
+                                        name: roomName ? roomName : 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
+                                        id: this._id,
+                                        key: typeof this.userKey !== 'undefined' ? this.userKey : c.exportable_privateKey,
+                                        userName: userName !== '' && typeof userName !== 'undefined' ? userName : 'Unnamed',
                                         lastSeenMessage: 0,
-                                        sharedKey: this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"]),
-                                        contacts: contacts ? contacts : {},
+                                        sharedKey: this.socket!.owner ? false : await this.Crypto.deriveKey(this.socket!.keys.privateKey, this.socket!.keys.ownerKey, "AES", false, ["encrypt", "decrypt"]),
                                         messages: []
-                                    };
+                                    }
                                 }
+                                this.name = roomData.name;
+                                this._id = roomData._id;
+                                this.userName = roomData.userName;
+                                this.sharedKey = roomData.sharedKey as JsonWebKey;
+                                this.lastSeenMessage = roomData.lastSeenMessage;
+                                if (this.readyResolver) {
+                                    this.readyResolver()
+                                }
+                                resolve(this);
                             })
                         } else {
                             reject('Failed to connect to channel')
                         }
-                        const roomData = channel && !overwrite ? channel : {
-                            name: overwrite && name ? name : 'Room ' + Math.floor(Object.keys(this.channels).length + 1),
-                            id: channelId,
-                            key: typeof key !== 'undefined' ? key : c.exportable_privateKey,
-                            userName: username !== '' && typeof username !== 'undefined' ? username : '',
-                            lastSeenMessage: 0,
-                            sharedKey: this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"]),
-                            contacts: contacts ? contacts : {},
-                            messages: []
-                        };
-                        console.warn(roomData)
-                        this.setRoom(channelId, roomData).then(async () => {
-                            this.key = typeof key !== 'undefined' ? key : c.exportable_privateKey;
-                            this.socket.userName = roomData.userName;
-                            this.sharedKey = this.socket.owner ? false : await this.Crypto.deriveKey(this.socket.keys.privateKey, this.socket.keys.ownerKey, "AES", false, ["encrypt", "decrypt"])
-                            this.save();
-                        })
                     }
-                    resolve('connected');
                 }).catch(e => {
                     reject(e);
                 });
@@ -171,173 +254,63 @@ class ChannelStore {
     };
 
     save = (): void => {
-        if (this?.id) {
-            cacheDb.setItem('sb_data_' + this.activeroom, toJS(this.rooms[this.activeroom])).then(() => {
-                const channels = this.channels
-                channels[this.activeroom] = { _id: this.rooms[this.activeroom].id, name: this.rooms[this.activeroom].name }
-                this.channels = channels;
-                cacheDb.setItem('sb_data_channels', this.channels)
-            })
-        }
+
+        cacheDb.setItem('sb_data_' + this._id, toJS(this)).then(() => {
+            console.log('sb_data_' + this._id + " saved")
+        })
     };
 
-    get channels() {
-        return toJS(this.channelList)
-    }
-
-    set channels(channelList) {
-        this.channelList = channelList
-    }
-
-    get config() {
-        return toJS(this.sbConfig);
-    }
-
-    set lastSeenMessage(messageId) {
-        if (this.activeRoom) {
-            this.rooms[this.activeRoom].lastSeenMessageId = messageId;
-        } else {
-            throw new Error("no active room")
-        }
-
-    }
-    get lastSeenMessage() {
-        return toJS(this.rooms[this.activeRoom].lastSeenMessageId);
-    }
-
-    set lastMessageTime(timestamp) {
-        this.rooms[this.activeRoom].lastMessageTime = timestamp;
-    }
-    get lastMessageTime() {
-        return toJS(this.rooms[this.activeRoom].lastMessageTime);
-    }
-
     set lockKey(lockKey) {
-        this.rooms[this.activeRoom].lockEncryptionKey = lockKey;
+        this.keys.lockEncryptionKey = lockKey;
     }
     get lockKey() {
-        return toJS(this.rooms[this.activeRoom].lockEncryptionKey);
+        return this.keys.lockEncryptionKey;
     }
 
-    set config(config) {
-        this.sbConfig = config;
-    }
-    set storage(storage: Snackabra["storage"] | undefined) {
-        this.storage = storage;
-    }
-    get storage(): Snackabra["storage"] | undefined {
-        return this.storage ? toJS(this.storage) : undefined;
-    }
     get socket() {
         return this.channel ? toJS(this.channel) : undefined;
     }
     set socket(channel) {
         this.channel = channel;
     }
-    get retrieveImage() {
-        return this.storage;
-    }
-    get owner() {
+
+    get isOwner() {
         return this.socket ? this.socket.owner : false;
     }
-    get admin() {
+
+    get isAdmin() {
         return this.socket ? this.socket.admin : false;
     }
-    set activeroom(channelId) {
-        this.activeRoom = channelId;
-    }
-    get activeroom() {
-        return this.activeRoom;
-    }
-    get username() {
-        return this.userName;
-    }
-    get roomName() {
-        return this.rooms[this.activeRoom]?.name ? this.rooms[this.activeRoom].name : 'Room ' + Math.floor(Object.keys(this.channels).length + 1);
-    }
-    set roomName(name) {
-        this.rooms[this.activeRoom].name = name;
-        this.channels[this.activeRoom].name = name
+
+    updateChannelName = (name: string) => {
+        this.name = name;
         this.save();
     }
 
-    updateChannelName = ({ name, channelId }) => {
-        return new Promise((resolve, reject) => {
-            try {
-                this.getChannel(channelId).then((data) => {
-                    this.rooms[channelId] = data
-                    this.rooms[channelId].name = name
-                    this.channels[channelId].name = name
-                    this.save();
-                    resolve('success')
-                })
-            } catch (e) {
-                reject(e)
-            }
-
-        })
-    }
-
     get user() {
-        return this.socket ? {
-            _id: JSON.stringify(this.socket.exportable_pubKey),
-            name: this.socket.userName
-        } : {
-            _id: '',
-            name: ''
-        };
-    }
-    set username(userName) {
-        if (this.rooms[this.activeRoom]) {
-            this.rooms[this.activeRoom].userName = userName;
-            const user_pubKey = this.user._id;
-            this.rooms[this.activeRoom].contacts[user_pubKey.x + ' ' + user_pubKey.y] = userName;
-            this.userName = userName;
-            this.save();
+        return {
+            _id: this.socket!.exportable_pubKey,
+            name: this.socket!.userName
         }
     }
-    set contacts(contacts) {
-        if (this.rooms[this.activeRoom]) {
-            this.rooms[this.activeRoom].contacts = contacts;
-            this.save();
-        }
-    }
-    get contacts() {
-        if (this.rooms[this.activeRoom]) {
-            return this.rooms[this.activeRoom].contacts ? toJS(this.rooms[this.activeRoom].contacts) : {};
-        }
-        return {};
-    }
-    get messages() {
-        if (this.rooms[this.activeRoom]) {
-            return this.rooms[this.activeRoom].messages ? toJS(this.rooms[this.activeRoom].messages) : [];
-        }
-        return [];
+    set username(userName: string) {
+
+        this.userName = userName;
+        const user_pubKey = this.user._id;
+        this.contacts[user_pubKey!.x + ' ' + user_pubKey!.y] = userName;
+        this.userName = userName;
+        this.save();
     }
 
-    set messages(messages) {
-        if (this.rooms[this.activeRoom]) {
-            this.rooms[this.activeRoom].messages = messages;
-            this.rooms[this.activeRoom].lastMessageTimeStamp = messages[messages.length - 1] !== undefined ? messages[messages.length - 1].timestampPrefix : 0
-            this.rooms[this.activeRoom].lastSeenMessage = messages[messages.length - 1] !== undefined ? messages[messages.length - 1]._id : ""
-            this.save();
-        }
-    }
-
-    set sharedKey(key) {
-        this.rooms[this.activeroom].sharedKey = key;
-    }
-
-    get sharedKey() {
-        return toJS(this.rooms[this.activeroom].sharedKey);
-    }
-
-    async replyEncryptionKey(recipientPubkey) {
-        return this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", JSON.parse(recipientPubkey), "ECDH", true, []), "AES", false, ["encrypt", "decrypt"])
+    async replyEncryptionKey(recipientPubkey: string) {
+        return this.Crypto.deriveKey(this.keys.privateKey, await this.Crypto.importKey("jwk", JSON.parse(recipientPubkey), "ECDH", true, []), "AES", false, ["encrypt", "decrypt"])
     }
 
     SBMessage = (message: string) => {
-        return new SB.SBMessage(this.socket, message);
+        if (!this.socket)
+            throw new Error('Not connected to a channel')
+
+        return new SBMessage(this.socket, message);
     };
 
     receiveMessage = async (m, messageCallback) => {
@@ -381,13 +354,14 @@ class ChannelStore {
             }
 
         }
-        this.rooms[this.activeRoom].lastMessageTime = m.timestampPrefix;
-        this.rooms[this.activeRoom].lastSeenMessage = m._id
-        this.rooms[this.activeRoom].messages = [...toJS(this.rooms[this.activeRoom].messages), m];
+        this.lastMessageTime = m.timestampPrefix;
+        this.lastSeenMessage = m._id
+        this.messages = [...toJS(this.messages), m];
         this.save();
         messageCallback(m);
     };
-    #mergeMessages = (existing, received) => {
+
+    #mergeMessages = (existing: any[], received: any[]) => {
         let merged = [];
         for (let i = 0; i < existing.length + received.length; i++) {
             if (received.find(itmInner => itmInner._id === existing[i]?._id)) {
@@ -409,31 +383,33 @@ class ChannelStore {
         }
         return merged.sort((a, b) => a._id > b._id ? 1 : -1);
     };
-    getOldMessages = length => {
+    getOldMessages = (length: number) => {
         return new Promise(resolve => {
-            this.socket.api.getOldMessages(length).then(async (r_messages) => {
+            if (!this.socket)
+                throw new Error('Not connected to a channel')
+            this.socket.api.getOldMessages(length).then(async (r_messages: any[]) => {
                 for (let x in r_messages) {
                     let m = r_messages[x]
                     // For whispers
                     if (m.whispered === true) {
                         m.text = "(whispered)"
                         try {
-                            if (m.whisper && this.socket.owner && !m.reply_to) {
+                            if (m.whisper && this.socket?.owner && !m.reply_to) {
                                 const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.sender_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
                                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                                 m.text = m.contents
                             }
-                            if (m.whisper && this.Crypto.compareKeys(m.sender_pubKey, this.socket.exportable_pubKey) && !m.reply_to) {
-                                const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
+                            if (this.socket?.exportable_pubKey && m.whisper && this.Crypto.compareKeys(m.sender_pubKey, this.socket.exportable_pubKey as JsonWebKey) && !m.reply_to) {
+                                const shared_key = await this.Crypto.deriveKey(this.socket?.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
                                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                                 m.text = m.contents
                             }
-                            if (m.reply_to && this.socket.owner) {
+                            if (m.reply_to && this.socket?.owner) {
                                 const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", m.reply_to, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
                                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                                 m.text = m.contents
                             }
-                            if (m.reply_to && this.Crypto.compareKeys(m.reply_to, this.socket.exportable_pubKey)) {
+                            if (this.socket?.exportable_pubKey && m.reply_to && this.Crypto.compareKeys(m.reply_to, this.socket.exportable_pubKey)) {
                                 const shared_key = await this.Crypto.deriveKey(this.socket.keys.privateKey, await this.Crypto.importKey("jwk", this.socket.exportable_owner_pubKey, "ECDH", true, []), "AES", false, ["encrypt", "decrypt"]);
                                 m.contents = await this.Crypto.unwrap(shared_key, m.whisper, 'string')
                                 m.text = m.contents
@@ -446,14 +422,14 @@ class ChannelStore {
                     }
                     r_messages[x] = m
                 }
-                this.rooms[this.activeRoom].messages = this.#mergeMessages(toJS(this.rooms[this.activeRoom].messages), r_messages);
+                this.messages = this.#mergeMessages(toJS(this.messages), r_messages);
                 this.save();
                 resolve(r_messages);
             });
         });
     };
 
-    importRoom = async roomData => {
+    importRoom = async (roomData: SerializedChannel) => {
         const channelId = roomData.roomId;
         const key = JSON.parse(roomData.ownerKey);
         try {
@@ -503,6 +479,7 @@ class ChannelStore {
     };
 
     //TODO: This isnt in the the jslib atm
+    @Ready
     lockRoom = () => {
         return new Promise((resolve, reject) => {
             try {
