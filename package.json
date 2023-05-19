@@ -32,7 +32,7 @@
   "dependencies": {
     "mobx": "^6.7.0",
     "react": "^17.0.0 || ^18.0.0",
-    "snackabra": "https://github.com/384co/snackabra-jslib.git#development"
+    "snackabra": "0.6.5"
   },
   "devDependencies": {
     "@babel/cli": "^7.19.3",
