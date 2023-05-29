@@ -1,7 +1,29 @@
 import { makeObservable, observable, action, computed, onBecomeUnobserved, configure, toJS } from "mobx";
 import { textChangeRangeIsUnchanged } from "typescript";
 import IndexedKV from "../IndexedKV";
-const SB = require('snackabra');
+
+console.log("=========== mobx-snackabra-store loading ===========")
+let SB = require('snackabra')
+if (SB.version) {
+  console.log("mobx-snackabra-store loading SB Version: ")
+  console.log(SB.version)
+} else {
+  console.log("mobx-snackabra-store overriding require(): ")
+  if (globalThis) {
+    if (globalThis.SB) {
+      SB = globalThis.SB
+      console.log("mobx-snackabra-store loading SB Version:")
+      console.log(SB)
+      console.log(SB.version)
+    } else {
+      console.log("ERROR - ... no globalThis.SB??")
+    }
+  } else {
+    console.log("ERROR - ... no globalThis??")
+  }
+}
+
+
 let cacheDb;
 configure({
   useProxies: "never"

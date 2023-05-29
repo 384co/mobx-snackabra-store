@@ -1,9 +1,7 @@
 import * as React from "react"
 import SnackabraStore from "../stores/Snackabra.Store"
 
-
 const SnackabraContext = React.createContext(undefined);
-
 
 export class SnackabraProvider extends React.Component {
   state = {
