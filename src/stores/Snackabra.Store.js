@@ -42,9 +42,10 @@ class SnackabraStore {
   Crypto = {};
   constructor(sbConfig) {
     this.config = sbConfig ? sbConfig : toJS(this.sbConfig);
-    this.SB = new SB.Snackabra(this.config);
-    this.Crypto = new SB.SBCrypto();
-    this.storage = this.SB.storage;
+    // moved to init():
+    // this.SB = new SB.Snackabra(this.config);
+    // this.Crypto = new SB.SBCrypto();
+    // this.storage = this.SB.storage;
     if (!sbConfig) {
       console.info('Using default servers in Snackabra.store', this.sbConfig);
     }
@@ -130,6 +131,13 @@ class SnackabraStore {
         // };
 
         const start = async () => {
+          // give interpreter a breather
+          await new Promise(resolve => setTimeout(resolve, 0));
+
+          this.SB = new SB.Snackabra(this.config);
+          this.Crypto = new SB.SBCrypto();
+          this.storage = this.SB.storage;
+
           const sb_data = JSON.parse(await cacheDb.getItem('sb_data'));
           const migrated = await cacheDb.getItem('sb_data_migrated');
           const channels = await cacheDb.getItem('sb_data_channels');
