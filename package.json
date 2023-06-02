@@ -32,7 +32,7 @@
   "dependencies": {
     "mobx": "^6.7.0",
     "react": "^17.0.0 || ^18.0.0",
-    "snackabra": "^1.0.0"
+    "snackabra": "0.6.5"
   },
   "devDependencies": {
     "@babel/cli": "^7.19.3",
